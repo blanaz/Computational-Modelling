@@ -1,0 +1,669 @@
+---
+title: "Eye Tracking"
+author: "Blanka Zana"
+date: "5 February 2018"
+output: html_document
+---
+
+
+ 1, data recording (data files (x,y coordinates, pupillary), stimulus files (pictres, onset), auxillary data (EEG or other data collection method, fMRI))
+ 2, Defining hypothesis
+    conceptual
+    operational
+    
+Hypotheses:
+1)
+C: Visal search patterns are affected by task structure (top-down)
+O: - Fixation duration, position (spatial dispersion)
+   - Saccades amplitude,amplitude, N, P next
+2)
+C: More emotionally engaged when involved in interaction (~direction and ostensiveness)
+O:- pupil size (time, lighting, in fixations and in saccades?)
+  - fixation duration
+    
+
+```{r setup, include=FALSE}
+
+
+pacman::p_load(readr,groupdata2,ggplot2,tidyverse,lmerTest,lme4,MuMIn,data.table,jpeg,grid,tidyr)
+
+# Both experiments are in the same files
+setwd("~/Denmark/Study/Semester IV/Eye Tracking/2018 - Eye tracking")
+Samples=read_delim('eyetracking_2018_samples.txt',delim='\t')
+Fixations=read_delim('eyetracking_2018_fixations.txt',delim='\t')
+Saccades=read_delim('eyetracking_2018_saccades.txt',delim='\t')
+
+
+#1)
+#condition = looking/not
+#salience = is it or not
+model = lmer (pupil_size_fixation ~ time + condition * salience + (1|participant))
+
+#2)
+#condition = count/search
+model = lmer(saccade_amplitude ~ condition + (1|participant))
+```
+
+
+Loading the clean data V1s
+
+
+```{r cars}
+
+sac_V1=read.csv2('SaccadesV1.csv',sep = ",")
+samp_V1 = read.csv2('SamplesV1.csv',sep = ",")
+fix_V1 = read.csv2('FixationsV1.csv', sep = ",")
+
+log1 = read.csv2('./PupilsLogs/logfile_1_2_f.csv',sep = ",")
+log2 = read.csv2('./PupilsLogs/logfile_2_1_f.csv',sep = ",")
+log3 = read.csv2('./PupilsLogs/logfile_3_2_f.csv',sep = ",")
+log4 = read.csv2('./PupilsLogs/logfile_4_1_F.csv',sep = ",")
+log5 = read.csv2('./PupilsLogs/logfile_5_2_m.csv',sep = ",")
+log6 = read.csv2('./PupilsLogs/logfile_6_1_m.csv',sep = ",")
+all_logs = merge(log1, log2, all = T)
+all_logs = merge(all_logs, log3, all = T)
+all_logs = merge(all_logs, log4, all = T)
+all_logs = merge(all_logs, log5, all = T)
+all_logs = merge(all_logs, log6, all = T)
+
+
+setnames(all_logs,"subject","ParticipantID")
+colnames(all_logs)[1] <- "Trial"
+all_logs$Trial = all_logs$Trial + 1
+logs_sac_V1 = merge(all_logs,sac_V1,all = T)
+logs_samp_V1 = merge(all_logs,samp_V1, all = T)
+logs_fix_V1 = merge(all_logs,fix_V1, all = T)
+
+logs_sac_V1$SearchOrder = as.numeric(logs_sac_V1$SearchOrder)
+#logs_sac_V1$Condition = "Search"[logs_sac_V1$Trial < 6[logs_sac_V1$SearchOrder == "1"]
+
+logs_sac_V1$Condition[logs_sac_V1$Trial < 6 & logs_sac_V1$SearchOrder == "1"] = "Search"
+logs_sac_V1$Condition[logs_sac_V1$Trial > 6 & logs_sac_V1$SearchOrder == "1"] = "Count"
+
+logs_sac_V1$Condition[logs_sac_V1$Trial < 6 & logs_sac_V1$SearchOrder == "2"] = "Count"
+logs_sac_V1$Condition[logs_sac_V1$Trial > 6 & logs_sac_V1$SearchOrder == "2"] = "Search"
+#repeat on al V1
+
+logs_samp_V1$Condition[logs_samp_V1$Trial < 6 & logs_samp_V1$SearchOrder == "1"] = "Search"
+logs_samp_V1$Condition[logs_samp_V1$Trial > 6 & logs_samp_V1$SearchOrder == "1"] = "Count"
+
+logs_samp_V1$Condition[logs_samp_V1$Trial < 6 & logs_samp_V1$SearchOrder == "2"] = "Count"
+logs_samp_V1$Condition[logs_samp_V1$Trial > 6 & logs_samp_V1$SearchOrder == "2"] = "Search"
+
+
+
+logs_fix_V1$SearchType[logs_fix_V1$Trial < 6 & logs_fix_V1$SearchOrder == "1"] = "Search"
+logs_fix_V1$SearchType[logs_fix_V1$Trial > 6 & logs_fix_V1$SearchOrder == "1"] = "Count"
+
+logs_fix_V1$SearchType[logs_fix_V1$Trial < 6 & logs_fix_V1$SearchOrder == "2"] = "Count"
+logs_fix_V1$SearchType[logs_fix_V1$Trial > 6 & logs_fix_V1$SearchOrder == "2"] = "Search"
+
+#why am I always so close yet not there 
+
+
+logs_sac_V1$DIRECTION [grepl("dir", logs_sac_V1$video)] = "Towards you"
+logs_sac_V1$DIRECTION [grepl("div", logs_sac_V1$video)] = "Towards 3rd"
+
+logs_samp_V1$DIRECTION [grepl("dir", logs_samp_V1$video)] = "Towards you"
+logs_samp_V1$DIRECTION [grepl("div", logs_samp_V1$video)] = "Towards 3rd"
+
+logs_fix_V1$DIRECTION [grepl("dir", logs_fix_V1$video)] = "Towards you"
+logs_fix_V1$DIRECTION [grepl("div", logs_fix_V1$video)] = "Towards 3rd"
+
+#also with ostensiveness
+
+logs_sac_V1$Ostensiveness [grepl("+o", logs_sac_V1$video)] = "Ostensive"
+logs_sac_V1$Ostensiveness [grepl("-o", logs_sac_V1$video)] = "Not ostensive"
+
+logs_samp_V1$Ostensiveness [grepl("+o", logs_samp_V1$video)] = "Ostensive"
+logs_samp_V1$Ostensiveness [grepl("-o", logs_samp_V1$video)] = "Not ostensive"
+
+logs_fix_V1$Ostensiveness [grepl("+o", logs_fix_V1$video)] = "Ostensive"
+logs_fix_V1$Ostensiveness [grepl("-o", logs_fix_V1$video)] = "Not ostensive"
+
+
+##also with actor gender
+
+logs_sac_V1$ActorGender [grepl("f", logs_sac_V1$video)] = "Female"
+logs_sac_V1$ActorGender [grepl("m", logs_sac_V1$video)] = "Male"
+
+logs_samp_V1$ActorGender [grepl("f", logs_samp_V1$video)] = "Female"
+logs_samp_V1$ActorGender [grepl("m", logs_samp_V1$video)] = "Male"
+
+logs_fix_V1$ActorGender [grepl("f", logs_fix_V1$video)] = "Female"
+logs_fix_V1$ActorGender [grepl("m", logs_fix_V1$video)] = "Male"
+
+
+############################################################################
+
+
+```
+
+Creating subsets for the two experiments
+
+```{r}
+
+# fixations by tasks
+Visual_fix = subset(logs_fix_V1, Task == "VisualSearch")
+Social_fix = subset(logs_fix_V1, Task == "SocialEngagement")
+
+# saccades by tasks
+Visual_sac = subset(logs_sac_V1, Task == "VisualSearch")
+Social_sac = subset(logs_sac_V1, Task =="SocialEngagement")
+
+#sample by tasks
+Visual_samp = subset(logs_samp_V1, Task == "VisualSearch")
+Social_samp = subset(logs_samp_V1, Task == "SocialEngagement")
+
+
+Visual_fix$SearchType = as.factor(Visual_fix$SearchType)
+Visual_sac$SearchType = as.factor(Visual_sac$SearchType)
+Visual_samp$SearchType = as.factor(Visual_samp$SearchType)
+
+summary(Visual_fix$SearchType == "NA")
+
+```
+
+
+
+
+
+Visualization 
+
+```{r pressure, echo=FALSE}
+
+#V2 part
+
+ggplot(Visual_fix, aes(Duration, na.rm = T)) + geom_density() + facet_wrap(~SearchType)
+
+ggplot(logs_sac_V1, aes(MeanVelocity)) + geom_histogram() + facet_wrap(~Task)
+
+
+ggplot(FixV2, aes(PupilSize, fill = ParticipantID)) + geom_density() + facet_wrap(~Task)
+
+
+
+
+dammn = glmer(Duration~SearchType + Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), logs_fix_V1)
+summary(dammn)
+
+duck = glmer(Duration~SearchType * Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), logs_fix_V1)
+summary(duck)
+
+molly = glmer(Duration~SearchType + (1+SearchType |ParticipantID),family = gaussian (link = log), logs_fix_V1)
+summary(molly)
+
+```
+
+duration of fixation
+amplitude of saccades
+duration of saccades
+number of fixations
+
+
+```{r}
+logs_fix_V1 = read.csv("FixationsV2.csv")
+
+#subset first
+
+search = subset(logs_fix_V1,Task == "VisualSearch")
+summary(logs_fix_V1$ParticipantGender[unique(logs_fix_V1$ParticipantID)])
+search$ParticipantID = as.numeric(as.factor(as.character(search$ParticipantID)))
+search$ParticipantID[search$ParticipantGender=="male"]
+folds=4
+
+#add column called "folds"
+foldyFixV2=fold(search, folds, id_col = "ParticipantID")
+summary(foldyFixV2$.folds)
+
+
+gmod="glmer(Duration~SerachType + Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), search)"
+mod1="glmer(Duration~SearchType * Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), search)"
+mod2="glmer(Duration~SearchType + (1+SearchType |ParticipantID),family = gaussian (link = log), search)"
+
+
+
+models=c(gmod,mod1,mod2) 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cross_v=function(numfolds, data, tempmod_string){
+  foldyFixV2=fold(search, folds, id_col = "ParticipantID")
+  perf_test_list=c() #Create variables
+  perf_train_list=c()
+  #r2m=c()
+  #r2c=c()
+
+  for(i in seq(numfolds)){
+    temp_train = subset(foldyFixV2, .folds != i) #
+    temp_test = subset(foldyFixV2, .folds == i) #
+    
+    temp_model = glmer(Duration~SearchType + Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), search)
+  
+    pred_test=predict(temp_model, temp_test, allow.new.levels=T) #
+    perf_test=Metrics::rmse(temp_test$Duration, pred_test) #
+    perf_test_list=c(perf_test_list, perf_test) #
+    pred_train=predict(temp_model, temp_train, allow.new.levels=T) #
+    perf_train=Metrics::rmse(temp_train$Duration, pred_train) #
+    perf_train_list=c(perf_train_list, perf_train) #
+    
+    #r2_df = as.data.frame(r.squaredGLMM(temp_model)) 
+    #r2m = c(r2m,r2_df[1,1])
+    #r2c = c(r2c,r2_df[2,1])
+  }
+  
+    perf_df= data.frame(perf_test_list, perf_train_list, temp_model=tempmod_string)
+  
+}
+
+for(temp_model in models) 
+  if (temp_model == models[1]){
+    results_df=cross_v(4, foldyFixV2, temp_model)
+   }else{
+   results_df = rbind(results_df, cross_v(4, foldyFixV2, temp_model))
+  }
+
+
+
+###########################
+
+try = results_df
+try = data.frame(try)
+
+
+try = group_by(try, temp_model) %>%
+  summarise_each(funs(mean(. , na.rm= T)), perf_test_list)
+
+try = setnames(try,"perf_test_list", "mean_test_rmse" )
+
+#V2 = logs_fix_V1
+
+```
+
+
+Now we know that the best model is duck (the interaction one), so we run that on the whole data set.
+
+```{r}
+duck = glmer(Duration~SearchType * Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), logs_fix_V1)
+summary(duck)
+
+plot(resid(duck))
+
+
+
+
+```
+
+Aaaand testing the other hypothesis - saccade amplitudes
+
+
+```{r}
+
+logs_sac_V1 = read.csv("SaccadesV2.csv")
+
+#subset first
+
+search = subset(logs_sac_V1,Task == "VisualSearch")
+summary(logs_fix_V1$ParticipantGender[unique(logs_fix_V1$ParticipantID)])
+search$ParticipantID = as.numeric(as.factor(as.character(search$ParticipantID)))
+search$ParticipantID[search$ParticipantGender=="male"]
+folds=4
+
+#add column called "folds"
+foldySacV2=fold(search, folds, id_col = "ParticipantID")
+summary(foldySacV2$.folds)
+
+
+gmod="glmer(Amplitude~SerachType + Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), search)"
+mod1="glmer(Amplitude~SearchType * Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), search)"
+mod2="glmer(Amplitude~SearchType + (1+SearchType |ParticipantID),family = gaussian (link = log), search)"
+
+
+
+models=c(gmod,mod1,mod2) 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cross_v=function(numfolds, data, tempmod_string){
+  foldySacV2=fold(search, folds, id_col = "ParticipantID")
+  perf_test_list=c() #Create variables
+  perf_train_list=c()
+  #r2m=c()
+  #r2c=c()
+
+  for(i in seq(numfolds)){
+    temp_train = subset(foldySacV2, .folds != i) #
+    temp_test = subset(foldySacV2, .folds == i) #
+    
+    temp_model = glmer(Amplitude~SearchType + Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), search)
+  
+    pred_test=predict(temp_model, temp_test, allow.new.levels=T) #
+    perf_test=Metrics::rmse(temp_test$Duration, pred_test) #
+    perf_test_list=c(perf_test_list, perf_test) #
+    pred_train=predict(temp_model, temp_train, allow.new.levels=T) #
+    perf_train=Metrics::rmse(temp_train$Duration, pred_train) #
+    perf_train_list=c(perf_train_list, perf_train) #
+    
+    #r2_df = as.data.frame(r.squaredGLMM(temp_model)) 
+    #r2m = c(r2m,r2_df[1,1])
+    #r2c = c(r2c,r2_df[2,1])
+  }
+  
+    perf_df= data.frame(perf_test_list, perf_train_list, temp_model=tempmod_string)
+  
+}
+
+for(temp_model in models) 
+  if (temp_model == models[1]){
+    results_df=cross_v(4, foldySacV2, temp_model)
+   }else{
+   results_df = rbind(results_df, cross_v(4, foldySacV2, temp_model))
+  }
+
+
+
+###########################
+
+try = results_df
+try = data.frame(try)
+
+
+try = group_by(try, temp_model) %>%
+  summarise_each(funs(mean(. , na.rm= T)), perf_test_list)
+
+try = setnames(try,"perf_test_list", "mean_test_rmse" )
+
+```
+
+And the best model for the second hypothesis (Amplitude) is also the interaction one.
+
+```{r}
+
+h2  = glmer(Amplitude~SearchType * Trial + (1+SearchType |ParticipantID),family = gaussian (link = log), search)
+
+summary(h2)
+
+```
+
+  
+  
+  
+
+```{r}
+
+FixationsV2 = read.csv('FixationsV2.csv')
+jet.colors = colorRampPalette(c("#00007F", "blue","#007FFF","cyan","#7FFF7F","yellow","#FF7F00","red","#7F0000"))
+
+img <- readJPEG('eyetrackingscripts/foraging/ng090ws.jpg')
+g = rasterGrob(img,interpolate=TRUE)
+
+#density
+
+a = ggplot(subset(FixationsV2, Task=='VisualSearch' & ParticipantID=='6_3_m2' & Trial==6), aes(x = PositionX, y = PositionY)) +
+xlim(0,1920) +
+ylim(0, 1080) +
+annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=-0, ymax=1080) + #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+stat_density2d(geom="raster", aes(fill=..density.., alpha=sqrt(sqrt(..density..))), contour=FALSE, n=1000) + 
+scale_alpha(range = c(0.1, 0.6)) + scale_fill_gradientn(colours = jet.colors(10), trans="sqrt")
+
+a
+
+
+##########################################
+
+fin
+
+FixationsV2 = read.csv('FixationsV2.csv')
+jet.colors = colorRampPalette(c("#00007F", "blue","#007FFF","cyan","#7FFF7F","yellow","#FF7F00","red","#7F0000"))
+
+img2 <- readJPEG('eyetrackingscripts/foraging/ng049ws.jpg')
+g1 = rasterGrob(img2,interpolate=TRUE)
+
+#density
+
+b = ggplot(subset(FixationsV2, Task=='VisualSearch' & ParticipantID=='3_1_f1' & Trial==3), aes(x = PositionX, y = 1081 -PositionY)) +
+xlim(0,1920) +
+ylim(0, 1080) +
+annotation_custom(g1, xmin=-Inf, xmax=Inf, ymin=-0, ymax=1080) + #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+stat_density2d(geom="raster", aes(fill=..density.., alpha=sqrt(sqrt(..density..))), contour=FALSE, n=1000) + 
+scale_alpha(range = c(0.1, 0.6)) + scale_fill_gradientn(colours = jet.colors(10), trans="sqrt")
+
+
+##########################################
+
+fin
+
+FixationsV2 = read.csv('FixationsV2.csv')
+jet.colors = colorRampPalette(c("#00007F", "blue","#007FFF","cyan","#7FFF7F","yellow","#FF7F00","red","#7F0000"))
+
+img4 <- readJPEG('eyetrackingscripts/foraging/ng049ws.jpg')
+g3 = rasterGrob(img4,interpolate=TRUE)
+
+#density
+
+ggplot(subset(FixationsV2, Task=='VisualSearch' & ParticipantID=='2_2_f2' & Trial==3), aes(x = PositionX, y = 1081-PositionY)) +
+xlim(0,1920) +
+ylim(0, 1080) +
+annotation_custom(g3, xmin=-Inf, xmax=Inf, ymin=-0, ymax=1080) + #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+stat_density2d(geom="raster", aes(fill=..density.., alpha=sqrt(sqrt(..density..))), contour=FALSE, n=1000) + 
+scale_alpha(range = c(0.1, 0.6)) + scale_fill_gradientn(colours = jet.colors(10), trans="sqrt")
+
+
+
+gridExtra::grid.arrange(a,b,c)
+
+plot(b)
+par(new = TRUE)
+plot(c)
+par(new = T)
+plot(d)
+
+
+
+
+
+
+FixationsV2 = read.csv('FixationsV2.csv')
+jet.colors = colorRampPalette(c("#00007F", "blue","#007FFF","cyan","#7FFF7F","yellow","#FF7F00","red","#7F0000"))
+
+img4 <- readJPEG('eyetrackingscripts/foraging/ng049ws.jpg')
+g4 = rasterGrob(img4,interpolate=TRUE)
+
+#density
+
+ggplot(subset(FixationsV2, Task=='VisualSearch' & ParticipantID=='5_1_m2' & Trial==3), aes(x = PositionX, y = 1081-PositionY)) +
+xlim(0,1920) +
+ylim(0, 1080) +
+annotation_custom(g4, xmin=-Inf, xmax=Inf, ymin=-0, ymax=1080) + #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+stat_density2d(geom="raster", aes(fill=..density.., alpha=sqrt(sqrt(..density..))), contour=FALSE, n=1000) + 
+scale_alpha(range = c(0.1, 0.6)) + scale_fill_gradientn(colours = jet.colors(10), trans="sqrt")
+d
+
+```
+
+
+
+
+```{r}
+
+img6 <- readJPEG('eyetrackingscripts/foraging/ng021ws.jpg')
+g6 = rasterGrob(img6,interpolate=TRUE)
+
+ggplot(subset(FixationsV2, Task=='VisualSearch' & ParticipantID=='1_1_f1' & Trial==1), aes(x = PositionX, y = 1081-PositionY)) +
+xlim(0,1920) +
+ylim(0, 1080) +
+annotation_custom(g6, xmin=-Inf, xmax=Inf, ymin=-0, ymax=1080) + #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+stat_density2d(geom="raster", aes(fill=..density.., alpha=sqrt(sqrt(..density..))), contour=FALSE, n=1000) + 
+scale_alpha(range = c(0.1, 0.6)) + scale_fill_gradientn(colours = jet.colors(10), trans="sqrt")
+#SCANPATHS
+x = 
+ggplot(subset(FixationsV2, Task == 'VisualSearch' & ParticipantID=='1_1_f1' & Trial==1), aes(x=PositionX, y= 1081-PositionY, label=Fixation))  +
+annotation_custom(g6, xmin=-Inf, xmax=Inf, ymin=-0, ymax=1080) + 
+geom_point(size = 10, alpha = 0.8, color = "magenta") +
+geom_path(size = 1, alpha = 0.3) +
+geom_text(aes(label = Fixation, size = 5)) 
+
+x
+
+####################3
+#Pupil size change over time plot
+SamplesV2 = read.csv("SamplesV2.csv")
+
+ggplot(subset(SamplesV2, Task =="SocialEngagement"), aes(TrialTime, PupilSize, colour = Ostension, na.rm = T)) +geom_smooth() + facet_grid(~Directionality)
+
+ggplot(search, aes(Trial,Duration, colour = SearchType, na.rm = T)) + geom_smooth() #facet_grid(~SearchType)
+search$ParticipantID = as.numeric(as.factor(as.character(search$ParticipantID)))
+search$ParticipantID = as.factor(search$ParticipantID)
+ggplot(search, aes(Trial,Duration, colour = ParticipantID, na.rm = T)) + geom_point() + facet_grid(~SearchType)
+
+ggplot(subset(search, ParticipantID=="4"), aes(Stimulus, Duration)) + geom_point()+facet_grid(~SearchType)
+
+ggplot(search,aes(Amplitude,fill = SearchType, colour = SearchType)) + geom_density() + facet_wrap(~SearchType)
+
+search$Trial = as.factor(search$Trial)
+ggplot(search, aes(Trial, Amplitude, colour = SearchType)) +geom_smooth() + facet_grid(~Directionality)
+
+```
+
+Social engagament
+
+1) what we wanna look at
+  Pupil size ~ Ost + DIR + Time +(1+Ost*DIR|Part)
+  
+  
+  
+```{r}
+SamplesV2 = read.csv("SamplesV2.csv")
+
+#subset first
+
+social = subset(SamplesV2,Task == "SocialEngagement")
+summary(logs_fix_V1$ParticipantGender[unique(logs_fix_V1$ParticipantID)])
+social$ParticipantID = as.numeric(as.factor(as.character(search$ParticipantID)))
+social$ParticipantID[social$ParticipantGender=="male"]
+
+#in order to be able to feed PupilSize data in a model, outliers need to be removed
+ggplot(social,aes(ParticipantID, PupilSize, colour = ParticipantID)) + geom_point()
+
+summary(social$PupilSize)
+social = subset(social, PupilSize > 0)
+
+
+mom = glmer(PupilSize~Ostension * Directionality * Trial + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log), social)
+summary(mom)
+
+
+#using my dataset
+summary(Social_fix$ParticipantID)
+social$ParticipantID = factor(social$ParticipantID)
+
+dad = glmer(PupilSize~Ostensiveness + DIRECTION + Trial + (1+Ostensiveness + DIRECTION |ParticipantID),family = gaussian (link = log), social)
+summary(dad)
+#-----------------model aic
+
+model1 = glmer(PupilSize~Ostension + Directionality + Trial + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log), social)
+model2 = glmer(PupilSize~Ostension * Directionality * Trial + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log),social)
+model3 = glmer(PupilSize~Ostension + Directionality + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log),social)
+model4 = glmer(PupilSize~Ostension * Directionality + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log),social)
+
+summary(model1)
+summary(model2)
+summary(model3)
+summary(model4)
+
+
+
+#----------------
+
+
+ggplot(social,aes(Ostension,PupilSize, fill = Directionality)) + geom_bar(stat = "identity") + facet_grid(~Directionality)
+
+#OR since I've been trying to run the model for 10 minutes now, we should argue that pupilsize in fixations dataset is perfectly good to use
+
+FixV2 = read.csv("FixationsV2.csv")
+summary(FixV2$ParticipantID)
+#subset first
+
+social = subset(FixV2,Task == "SocialEngagement")
+summary(FixV2$ParticipantID)
+social$ParticipantID = as.numeric(as.factor(as.character(social$ParticipantID)))
+
+b = glmer(PupilSize~Ostension + Directionality + Trial + (1+Directionality |ParticipantID) + (1+Ostension | ParticipantID),family = gaussian (link = log), social)
+summary(b)
+
+
+folds=4
+
+#add column called "folds"
+foldysocial=fold(social, folds, id_col = "ParticipantID")
+summary(foldySampV2$.folds)
+
+
+gmod="glmer(PupilSize~Ostension + Directionality + Trial + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log), social)"
+mod1="glmer(PupilSize~Ostension * Directionality * Trial + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log),social)"
+mod2="glmer(PupilSize~Ostension + Directionality + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log),social)"
+mod3="glmer(PupilSize~Ostension * Directionality + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log),social)"
+
+
+models=c(gmod,mod1,mod2,mod3) 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cross_v=function(numfolds, data, tempmod_string){
+  foldysocial=fold(social, folds, id_col = "ParticipantID")
+  perf_test_list=c() #Create variables
+  perf_train_list=c()
+  #r2m=c()
+  #r2c=c()
+
+  for(i in seq(numfolds)){
+    temp_train = subset(foldysocial, .folds != i) #
+    temp_test = subset(foldysocial, .folds == i) #
+    
+    temp_model = glmer(PupilSize~Ostension + Directionality + Trial + (1+Ostension + Directionality |ParticipantID),family = gaussian (link = log), social)
+  
+    pred_test=predict(temp_model, temp_test, allow.new.levels=T) #
+    perf_test=Metrics::rmse(temp_test$Duration, pred_test) #
+    perf_test_list=c(perf_test_list, perf_test) #
+    pred_train=predict(temp_model, temp_train, allow.new.levels=T) #
+    perf_train=Metrics::rmse(temp_train$Duration, pred_train) #
+    perf_train_list=c(perf_train_list, perf_train) #
+    
+    #r2_df = as.data.frame(r.squaredGLMM(temp_model)) 
+    #r2m = c(r2m,r2_df[1,1])
+    #r2c = c(r2c,r2_df[2,1])
+  }
+  
+    perf_df= data.frame(perf_test_list, perf_train_list, temp_model=tempmod_string)
+  
+}
+
+for(temp_model in models) 
+  if (temp_model == models[1]){
+    results_df=cross_v(4, foldysocial, temp_model)
+   }else{
+   results_df = rbind(results_df, cross_v(4, foldysocial, temp_model))
+  }
+
+
+
+###########################
+
+try = results_df
+try = data.frame(try)
+
+
+try = group_by(try, temp_model) %>%
+  summarise_each(funs(mean(. , na.rm= T)), perf_test_list)
+
+try = setnames(try,"perf_test_list", "mean_test_rmse" )
+
+
+
+
+
+```
+  
+  
+
+```{r}
+
+
+
+
+```
+
