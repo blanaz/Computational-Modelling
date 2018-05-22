@@ -1,0 +1,581 @@
+---
+title: "Assignment3"
+author: "BZ"
+date: "3/6/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Denmark/Study/Semester IV/Computational Modelling/Portfolio III")
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+```
+
+```{r}
+library(pacman)
+pacman::p_load(readr,groupdata2,ggplot2,tidyverse,lmerTest,lme4,MuMIn,data.table,jpeg,grid,tidyr,rethinking,gridExtra)
+df = read.csv("Assignment3Data.csv")
+
+
+```
+
+
+## Multivariate linear models
+
+In this assignment you will investigate the relation between different aspects of IQ and symptom severity in ASD (as measured by ADOS). The assignment is meant to make you practice on linear models, multiple predictors and interactions.
+
+The data you will use is the outcome of the psychological testing of the children you analyzed in methods 3.
+Data: https://www.dropbox.com/s/hom2qnmp9hyfwmu/Assignment3Data.csv?dl=0
+The data consists of ChildID, gender, age, diagnosis (ASD), symptom severity (ADOS), several aspects of IQ (NonVerbal/Perceptual,Verbal,Social) and the visit at which the tests were administered. The questions should be answered by focusing on visit 1.
+
+The questions you will have to answer are:
+
+1. Assess the relation between symptom severity and IQ (focus on visit 1 and children with ASD) and report the model, a plot of the model, a couple of lines describing the quality of the model and interpreting the results. P.S. Should you scale? P.P.S. Don't forget to motivate your priors. P.P.P.S. At least one plot for results and a plot for quality of each model (here and in the next questions) would be appreciated.
+1.1. Verbal IQ and ADOS
+```{r}
+data = subset(df,ASD == "1")
+data = subset(data,Visit =="1")
+
+
+dens(data$ADOS)
+dens(data$VerbalIQ)
+
+plot(density(data$ADOS.s),col = "black",type = "l")
+lines(density(data$VerbalIQ.s),col = "red",type = "l")
+
+
+plot(density(data$ADOS.s,col = "black"))
+lines(density(data$NonVerbalIQ.s),col = "green",type = "l")
+
+plot(density(data$ADOS.s,col = "black"))
+lines(density(data$SocialIQ.s),col = "blue",type = "l")
+
+data$VerbalIQ.s = scale(data$VerbalIQ)
+data$ADOS.s = scale(data$ADOS)
+
+sd(data$ADOS.s)
+mean(data$ADOS.s)
+sd(data$VerbalIQ.s)
+mean(data$VerbalIQ.s)
+thingie <- rethinking::map(
+                alist(
+                  ADOS.s ~ dnorm(mu, sigma),
+                  mu <- a + b*VerbalIQ.s,
+                  a ~ dnorm(0,1),
+                  b ~ dnorm(0,1),
+                  sigma ~ dunif(0,2)
+                ),
+                data = data)
+
+precis(thingie)
+plot(precis(thingie))
+plot(extract.samples(thingie),main = "Posterior of Verbal IQ")
+HPDI(extract.samples(thingie))
+
+plot( ADOS.s ~ VerbalIQ.s , data=data )
+abline( thingie )
+
+
+
+#plotting the posterior
+sampl = extract.samples(thingie)
+plot(density(sampl$b),main = "Posterior of Verbal IQ")
+
+
+###whatever
+
+sampl = extract.samples(thingie)
+plot(density(sampl$b))
+
+
+plot(density(a$sampl.a))
+lines(density(a$prior))
+plot(density(a$prior))
+lines(density(a$sampl.a))
+
+
+
+a = data.frame(sampl$a)
+ base::sample(as.data.frame(rnorm(0,1)),10,replace = T)
+ m = matrix(rnorm(10000, 0, 1) )
+
+ a$prior = m
+ggplot(a,aes(sampl.a)) + geom_density() + ggplot(a,aes(prior)) + geom_density()
+lines(density(dnorm(10e4,0,1)))
+#######################Kenneth
+
+
+gggplot = function(model, x = NULL , y = NULL, dataframe){ 
+  #where:
+    #model is a model resulting from MAP
+    #x is the x variable as a string (can be left unspecified)
+    #y is the y variable as a string (can be left unspecified)
+    #dataframe is the dataframe from which the model is trained upon
+  
+    #requires packages: dplyr, ggplot2, stringr and rethinking
+  
+  if (is.null(y) == T){
+      #if x isn't specified - extract y
+    temp <- flist_untag(model@formula)[[1]]
+    y <- as.character(temp[[2]]) 
+  }
+  if (is.null(x) == T){
+      #if x isn't specified - extract x
+    temp <- flist_untag(model@formula)[[2]]
+    x <- gsub(" ","",gsub(".*\\*","",as.character(temp[[3]])[3]))
+  }
+    
+    #extracting data from the dataframe
+  xd <- dplyr::select(dataframe, x)
+  yd <- dplyr::select(dataframe, y)
+  
+    #calculate the prior data
+  post <- extract.samples(model) #posterior from samples 
+  mu.link <- function(x) post$a + post$b*x
+  VIQ.seq <- seq( from=min(xd) , to=max(xd) , by=0.1 )
+  mu <- sapply( VIQ.seq , mu.link )
+  mu.mean <- apply( mu , 2 , mean )
+  mu.HPDI <- apply( mu , 2 , HPDI , prob=0.89 )
+  temp_list = list(VIQ.seq); names(temp_list) <- x #naming the vector in the list (since the sim function requires it)
+  sim.VIQ <- sim( model , data=temp_list )
+  VIQ.PI <- apply( sim.VIQ , 2 , PI , prob=0.89 )
+  
+    #transform the data from ggplot
+      #for making the line
+  temp_df <- data.frame(VIQ.seq = VIQ.seq, mu.mean = mu.mean) 
+      #for making the HDPI
+  temp_matrix <- t(data.frame(mu.HPDI = mu.HPDI)) #t() is a tranpose function which returns a matrix
+  temp_df1 = data.frame(lower = temp_matrix[,1], upper = temp_matrix[,2], 
+                        mu.mean = mu.mean, VIQ.seq = VIQ.seq)
+      #for making the PI
+  temp_matrix <- t(data.frame(VIQ.PI = VIQ.PI)) 
+  temp_df2 = data.frame(lower = temp_matrix[,1], upper = temp_matrix[,2], 
+                        mu.mean = mu.mean, VIQ.seq = VIQ.seq)
+      #for the points
+  dataframe = data.frame(xd, yd)
+    #taking the data to new column as to chose the name (maintaining old name for the names on the plot)
+  dataframe$c1 = dataframe[,1]
+  dataframe$c2 = dataframe[,2]
+  
+    #make the plot
+  grob = ggplot(dataframe, aes(x = c1, y = c2)) +
+    geom_ribbon(data = temp_df2,
+                aes(x = VIQ.seq, y = mu.mean, ymin = lower, ymax = upper),
+                fill = "grey70", alpha = 2/3) +
+      geom_ribbon(data = temp_df1,
+                aes(x = VIQ.seq, y = mu.mean, ymin = lower, ymax = upper),
+                fill = "grey83", alpha = 2/3) +
+    geom_line(data = temp_df, aes(x = VIQ.seq, y = mu.mean))+
+    geom_point(color = "navyblue", shape = 1, size = 1.5, alpha = 2/3)+
+    xlab(colnames(dataframe)[1]) + ylab(colnames(dataframe)[2]) #using the names for the axis
+  return(grob)
+}  
+#go go gadget fancy plot
+
+gggplot(thingie, x = NULL , y = NULL,  data)
+
+#------------------------------------------
+
+
+
+# call link without specifying new data
+# so it uses original data
+mu <- link( thingie )
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+ADOS.verb.sim <- sim( thingie , n=1e4 )
+ADOS.verb.PI <- apply( ADOS.verb.sim , 2 , PI )
+
+plot( mu.mean ~ data$ADOS.s , col=rangi2 , ylim=range(mu.PI) ,
+xlab="Observed ADOS" , ylab="Predicted ADOS",main = "Verbal" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(data) )
+lines( rep(data$ADOS.s[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+col=rangi2 )
+
+#IQ testing has a measurement error of 10
+IQ_est~dnorm(mu,sigma)
+mu~ a+ b*x
+
+IQ~dnrom(IQ_esti,IQ_sd)
+IQ_sd = 10
+
+
+```
+1.2. Non Verbal IQ and ADOS
+```{r}
+
+
+data$NonVerbalIQ.s = scale(data$NonVerbalIQ)
+
+thingie1 <- rethinking::map(
+                alist(
+                  ADOS.s ~ dnorm(mu, sigma),
+                  mu <- a + b*NonVerbalIQ.s,
+                  a ~ dnorm(0,1),
+                  b ~ dnorm(0,1),
+                  sigma ~ dunif(0,2)
+                ),
+                data = data)
+
+plot(precis(thingie1))
+plot(sample(density(mu)))
+HPDI(extract.samples(thingie1))
+
+plot( ADOS.s ~ NonVerbalIQ.s , data=data )
+abline( thingie1 )
+
+sampl = extract.samples(thingie1)
+
+plot(density(sampl$b),main = "Posterior of NonVerbal IQ")
+
+#######################3Kenneth
+
+#go go gadget fancy plot
+
+gggplot(thingie1, x = NULL , y = NULL,  data)
+
+# call link without specifying new data
+# so it uses original data
+mu <- link( thingie1 )
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+ADOS.nonverb.sim <- sim( thingie1 , n=1e4 )
+ADOS.nonverb.PI <- apply( ADOS.nonverb.sim , 2 , PI )
+
+plot( mu.mean ~ data$ADOS.s , col=rangi2 , ylim=range(mu.PI) ,
+xlab="Observed ADOS" , ylab="Predicted ADOS",main = "NonVerbal" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(data) )
+lines( rep(data$ADOS.s[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+col=rangi2 )
+
+```
+1.3. Social IQ and ADOS
+```{r}
+
+data$SocialIQ.s = scale(data$SocialIQ)
+
+thingie2 <- rethinking::map(
+                alist(
+                  ADOS.s ~ dnorm(mu, sigma),
+                  mu <- a + b*SocialIQ.s,
+                  a ~ dnorm(0,1),
+                  b ~ dnorm(0,1),
+                  sigma ~ dunif(0,2)
+                ),
+                data = data)
+
+precis(thingie2)
+plot(precis(thingie2))
+plot(sample(density(mu)))
+HPDI(extract.samples(thingie2))
+
+plot( ADOS.s ~ SocialIQ.s,data=data )
+abline( thingie2 )
+
+plot( ADOS.s ~ SocialIQ.s , data=data )
+abline( a=coef(thingie2)["a"] , b=coef(thingie2)["b"])
+
+sampl = extract.samples(thingie2)
+plot(density(sampl$b),main = "Posterior of Social IQ")
+#go go gadget fancy plot
+
+gggplot(thingie2, x = NULL , y = NULL,  data)
+
+# call link without specifying new data
+# so it uses original data
+mu <- link( thingie2 )
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+ADOS.soc.sim <- sim( thingie2 , n=1e4 )
+ADOS.soc.PI <- apply( ADOS.soc.sim , 2 , PI )
+
+plot( mu.mean ~ data$ADOS.s , col=rangi2 , ylim=range(mu.PI) ,
+xlab="Observed ADOS" , ylab="Predicted ADOS",main = "Social" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(data) )
+lines( rep(data$ADOS.s[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+col=rangi2 )
+
+```
+
+2. Do the different aspects of IQ account for different portions of the variance in ADOS? 
+
+2.1. Does it make sense to have all IQ measures in the same model? First write a few lines answering the question and motivating your answer, including a discussion as to what happens when you put all of them in the same model.
+
+No, it doesn't make sense to include all aspects of IQ in the same model because we risk overfitting the model. An alternative way to investigate the different aspects would be to compare the 
+
+Then build a model following your answer. If your answer is "no", you are not free, you still have to answer: are there alternative ways of answering the question?
+
+
+2.2. Build the model, assess its quality, write a few lines interpreting the results.
+```{r}
+thingie3 <- rethinking::map(
+                alist(
+                  ADOS.s ~ dnorm(mu, sigma),
+                  mu <- a + bV*VerbalIQ.s + bN*NonVerbalIQ.s + bS*SocialIQ.s,
+                  a ~ dnorm(0,1),
+                  bV ~ dnorm(0,1),
+                  bN ~ dnorm(0,1),
+                  bS ~ dnorm(0,1),
+                  sigma ~ dunif(0,2)
+                ),
+                data = data)
+
+
+precis(thingie3)
+plot(precis(thingie3))
+
+
+plot(data$ADOS.s~data$VerbalIQ.s) + abline(thingie3)
+plot(data$ADOS.s~data$NonVerbalIQ.s)+abline(thingie3)
+plot(data$ADOS.s~data$SocialIQ.s)+abline(thingie3)
+
+
+HPDI(extract.samples(thingie3))
+
+sampl = extract.samples(thingie3)
+plot(density(sampl$bV),main = "Verbal IQ ")
+plot(density(sampl$bN),main = "NonVerbal IQ")
+plot(density(sampl$bS),main = "Socail IQ")
+
+# call link without specifying new data
+# so it uses original data
+mu <- link( thingie3 )
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+ADOS.multi.sim <- sim( thingie3 , n=1e4 )
+ADOS.multi.PI <- apply( ADOS.multi.sim , 2 , PI )
+
+plot( mu.mean ~ data$ADOS.s , col=rangi2 , ylim=range(mu.PI) ,
+xlab="Observed ADOS" , ylab="Predicted ADOS",main = "Multi" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(data) )
+lines( rep(data$ADOS.s[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+col=rangi2 )
+
+
+
+#go go gadget fancy plot
+
+gggplot(thingie3, x = NULL , y = NULL,  data)
+
+```
+
+3. Let's now include also the TD children. Does it make sense to ask whether IQ and ADOS are related? Motivate your answer. In any case, if you wanted to build a model to answer that question, which model would you build? Run the model, assess its quality, write a few lines interpreting the results.
+
+```{r}
+
+df = subset(df,Visit =="1")
+
+plot(df$ADOS.s~df$VerbalIQ.s) + abline( a=0.5, b=-0.7 , lty=2 )
+plot(df$ADOS.s~df$NonVerbalIQ.s) + abline( a=0.5, b=-0.7 , lty=2 )
+plot(df$ADOS.s~df$SocialIQ.s) + abline( a=0.5, b=-0.7 , lty=2 )
+
+df$ASD = as.factor(df$ASD)
+ggplot(df,aes(SocialIQ.s,ADOS.s)) + geom_point() + geom_smooth(method = "lm") + facet_wrap(~ASD)
+
+ggplot(df,aes(SocialIQ.s,ADOS.s)) + geom_point() + geom_smooth(method = "lm")
+
+
+df$ADOS.s = scale(df$ADOS)
+df$VerbalIQ.s = scale(df$VerbalIQ)
+df$NonVerbalIQ.s = scale(df$NonVerbalIQ)  
+df$SocialIQ.s = scale(df$SocialIQ)
+thingie4 <- rethinking::map(
+                alist(
+                  ADOS.s ~ dnorm(mu, sigma),
+                  mu <- a + bV*VerbalIQ.s + bN*NonVerbalIQ.s + bS*SocialIQ.s,
+                  a ~ dnorm(0,1),
+                  bV ~ dnorm(0,1),
+                  bN ~ dnorm(0,1),
+                  bS ~ dnorm(0,1),
+                  sigma ~ dunif(0,2)
+                ),
+                data = df)
+
+precis(thingie4)
+plot(precis(thingie4))
+
+#go go gadget fancy plot
+
+gggplot(thingie4, x = NULL , y = NULL,  df)
+
+# call link without specifying new data
+# so it uses original data
+mu <- link( thingie4)
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+ADOS.soc.sim <- sim( thingie4 , n=1e4 )
+ADOS.soc.PI <- apply( ADOS.soc.sim , 2 , PI )
+
+plot( mu.mean ~ df$ADOS.s , col=rangi2 , ylim=range(mu.PI) ,
+xlab="Observed ADOS" , ylab="Predicted ADOS",main = "l" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(df) )
+lines( rep(df$ADOS.s[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+col=rangi2 )
+
+
+#bV seems to be a strong predictor - let's build a model only with that 
+
+thingie5 <- rethinking::map(
+                alist(
+                  ADOS.s ~ dnorm(mu, sigma),
+                  mu <- a + b*SocialIQ.s,
+                  a ~ dnorm(0,1),
+                  b ~ dnorm(0,1),
+                  sigma ~ dunif(0,2)
+                ),
+                data = df)
+
+precis(thingie5)
+plot(precis(thingie5))
+plot(sample(density(mu)))
+HPDI(sample(mu))
+
+plot( ADOS.s ~ SocialIQ.s,data=df )
+abline( thingie5 )
+
+plot( ADOS.s ~ SocialIQ.s , data=df )
+abline( a=coef(thingie5)["a"] , b=coef(thingie5)["b"])
+
+
+
+#go go gadget fancy plot
+
+gggplot(thingie5, x = NULL , y = NULL,  df)
+
+# call link without specifying new data
+# so it uses original data
+mu <- link( thingie5 )
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+ADOS.soc.sim <- sim( thingie5 , n=1e4 )
+ADOS.soc.PI <- apply( ADOS.soc.sim , 2 , PI )
+
+plot( mu.mean ~ df$ADOS.s , col=rangi2 , ylim=range(mu.PI) ,
+xlab="Observed ADOS" , ylab="Predicted ADOS",main = "Social" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(df) )
+lines( rep(df$ADOS.s[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+col=rangi2 )
+
+#------------------------------------------------------------------------------
+
+
+thingie6 <- rethinking::map(
+                alist(
+                  ADOS.s ~ dnorm(mu, sigma),
+                  mu <- a + bD*ASD + bV*VerbalIQ.s + bN*NonVerbalIQ.s + bS*SocialIQ.s,
+                  a ~ dnorm(0,1),
+                  bD ~ dbinom(0,1),
+                  bV ~ dnorm(0,1),
+                  bN ~ dnorm(0,1),
+                  bS ~ dnorm(0,1),
+                  sigma ~ dunif(0,2)
+                ),
+                data = df)
+
+precis(thingie5)
+plot(precis(thingie5))
+
+#go go gadget fancy plot
+
+gggplot(thingie4, x = NULL , y = NULL,  df)
+
+# call link without specifying new data
+# so it uses original data
+mu <- link( thingie4)
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+ADOS.soc.sim <- sim( thingie4 , n=1e4 )
+ADOS.soc.PI <- apply( ADOS.soc.sim , 2 , PI )
+
+plot( mu.mean ~ df$ADOS.s , col=rangi2 , ylim=range(mu.PI) ,
+xlab="Observed ADOS" , ylab="Predicted ADOS",main = "l" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(df) )
+lines( rep(df$ADOS.s[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+col=rangi2 )
+
+
+
+```
+4. Let's discuss contents:
+4.1. You have three scores for IQ, do they show shared variance? Is that the same in TD and ASD? What does that tell us about IQ?
+```{r}
+
+data1 = subset(df,ASD == "0")
+plot(data1$ADOS.s~data1$VerbalIQ.s) + abline( a=0.5, b=-0.7 , lty=2 )
+plot(data1$ADOS.s~data1$NonVerbalIQ.s) + abline( a=0.5, b=-0.7 , lty=2 )
+plot(data1$ADOS.s~data1$SocialIQ.s) + abline( a=0.5, b=-0.7 , lty=2 )
+
+data1$ASD = as.factor(data1$ASD)
+ggplot(df,aes(SocialIQ.s,ADOS.s)) + geom_point() + geom_smooth(method = "lm") + facet_wrap(~ASD)
+
+ggplot(data1,aes(SocialIQ.s,ADOS.s)) + geom_point() + geom_smooth(method = "lm")
+
+
+data1$ADOS.s = scale(data1$ADOS)
+data1$VerbalIQ.s = scale(data1$VerbalIQ)
+data1$NonVerbalIQ.s = scale(data1$NonVerbalIQ)  
+data1$SocialIQ.s = scale(data1$SocialIQ)
+thingie6 <- rethinking::map(
+                alist(
+                  ADOS.s ~ dnorm(mu, sigma),
+                  mu <- a + bV*VerbalIQ.s + bN*NonVerbalIQ.s + bS*SocialIQ.s,
+                  a ~ dnorm(0,1),
+                  bV ~ dnorm(0,1),
+                  bN ~ dnorm(0,1),
+                  bS ~ dnorm(0,1),
+                  sigma ~ dunif(0,2)
+                ),
+                data = data1)
+
+precis(thingie6)
+plot(precis(thingie6))
+
+
+```
+4.2. You have explored the relation between IQ and ADOS. How do you explain that relation from a cognitive perspective? N.B. You can present alternative hypotheses.
+```{r}
+
+
+```
+
+5. Bonus questions: Including measurement errors. 
+5.1. Let's assume that ADOS has a measurement error of 1. How would you model that in any of the previous models?
+```{r}
+
+
+```
+5.2. We know that IQ has an estimated measurement error of 2.12. How would you include that? 
+```{r}
+
+
+```
+
+
